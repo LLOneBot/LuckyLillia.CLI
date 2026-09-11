@@ -28,15 +28,23 @@ bin/
 
 ## 命令行参数
 
-所有参数都是可选的。CLI 自身识别 `--pmhq` / `--no-headless` 切换模式；其余参数：headless 模式下仅 `--qq=` 透传给 LLBot，PMHQ 模式下透传给 PMHQ。
+所有参数都是可选的。CLI 自身识别 `--pmhq` / `--no-headless` 切换模式；其余参数：headless 模式下只把 `--qq` / `--protocol` / `--cdn` / `--debug` 透传给 LLBot（其它参数忽略，带值的统一转成 `--xxx=value` 形式），PMHQ 模式下全部透传给 PMHQ（`--debug` 会同时传给 LLBot）。
 
 | 参数 | 说明 |
 |------|------|
 | `--pmhq`, `--no-headless` | 切换为 PMHQ 模式（默认 headless 直连） |
 | `--qq=<number>` | 快速登录 QQ 号（两种模式均生效） |
+| `--debug` | 调试模式（两种模式均生效；PMHQ 模式下 PMHQ 和 LLBot 同时开启） |
+| `--cdn=<cf\|china>` | 接入点 CDN，默认 `cf`（两种模式均生效） |
 | `--update` | 检查并执行更新 |
 | `--help, -h` | 显示帮助信息 |
 | `--version, -v` | 显示版本信息 |
+
+以下参数仅在 **headless 模式** 下生效（透传给 LLBot）：
+
+| 参数 | 说明 |
+|------|------|
+| `--protocol=<name>`, `-p` | 登录协议：`linux`（默认）/ `windows` / `macos` / `watch` |
 
 以下参数仅在 **PMHQ 模式** 下生效（透传给 PMHQ）：
 
@@ -44,7 +52,6 @@ bin/
 |------|------|
 | `--qq-path=<path>` | QQ 可执行文件路径 |
 | `--qq-console` | 启用 QQ 控制台日志 |
-| `--debug` | 调试模式 |
 | `--debug-pb[=true/false]` | 显示 send/recv Protobuf 日志 |
 | `--work-dir=<path>` | 工作目录 |
 | `--no-exit-with-qq` | 禁用 QQ 退出时自动退出（默认启用） |

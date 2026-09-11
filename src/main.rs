@@ -19,15 +19,24 @@ use std::time::Duration;
 const DEFAULT_PORT: u16 = 13000;
 const PORT_RANGE_END: u16 = 14000;
 
-// 从参数里取快速登录号, 支持 --qq=<uin> 和 --qq <uin> 两种形式, 没有返回 None.
-fn extract_qq_uin(args: &[String]) -> Option<String> {
+// 取选项值, 支持 <name>=<v> 和 <name> <v> 两种写法, names 可带别名 (如 ["--protocol", "-p"]).
+// 名字精确匹配, --qq 不会误吃 --qq-path; 空格写法的下一个参数以 "-" 开头时视为缺值, 不吞别的选项.
+fn extract_opt_value(args: &[String], names: &[&str]) -> Option<String> {
     for (i, a) in args.iter().enumerate() {
-        if let Some(v) = a.strip_prefix("--qq=") {
-            return Some(v.to_string());
-        }
-        // 空格形式: --qq 后面紧跟的一个参数是 uin (精确匹配 "--qq", 不会误吃 --qq-path)
-        if a == "--qq" {
-            return args.get(i + 1).cloned();
+        for &name in names {
+            match a.strip_prefix(name) {
+                Some("") => {
+                    if let Some(v) = args.get(i + 1).filter(|v| !v.starts_with('-')) {
+                        return Some(v.clone());
+                    }
+                }
+                Some(rest) => {
+                    if let Some(v) = rest.strip_prefix('=') {
+                        return Some(v.to_string());
+                    }
+                }
+                None => {}
+            }
         }
     }
     None
@@ -48,14 +57,18 @@ fn print_help() {
     println!("选项:");
     println!("  --pmhq, --no-headless   切换为 PMHQ 模式 (默认 headless 直连)");
     println!("  --qq=<number>           快速登录 QQ 号 (两种模式均生效)");
+    println!("  --debug                 调试模式 (两种模式均生效)");
+    println!("  --cdn=<cf|china>        接入点 CDN, 默认 cf (两种模式均生效)");
     println!("  --update                检查并执行组件更新 (CLI / PMHQ / LLBot)");
     println!("  --help, -h              显示此帮助");
     println!("  --version, -v           显示版本");
     println!();
+    println!("headless 模式额外参数 (透传给 LLBot, 其它参数忽略):");
+    println!("  --protocol=<name>, -p   登录协议: linux (默认) / windows / macos / watch");
+    println!();
     println!("PMHQ 模式额外参数 (透传给 PMHQ):");
     println!("  --qq-path=<path>        QQ 可执行文件路径");
     println!("  --qq-console            启用 QQ 控制台日志");
-    println!("  --debug                 调试模式");
     println!("  --work-dir=<path>       工作目录");
     println!("  --no-exit-with-qq       禁用 QQ 退出时自动退出 (默认启用)");
     println!("  --qq-exit-delay=<秒>    QQ 退出后缓冲时间 (默认 15 秒)");
@@ -164,6 +177,8 @@ fn main() {
     println!("LLBot CLI 启动器");
     println!("================");
 
+    let debug = args.iter().any(|a| a == "--debug");
+
     // 按模式构建启动命令. proc_label 用于日志/退出提示.
     let (mut cmd, proc_label): (Command, &str) = if headless {
         println!("模式: headless (LLBot 直连)");
@@ -177,13 +192,19 @@ fn main() {
         cmd.arg("--disable-warning=ExperimentalWarning")
             .arg("--enable-source-maps")
             .arg("llbot.js");
-        // 透传快速登录 QQ 号. 注意: 直接起 node 时脚本参数不能加 "--" 分隔符,
-        // 否则 node 会把 "--" 连同后面的参数一起塞进 process.argv, llbot.js 的
-        // parseArgs 会把 --qq=xxx 当成 positional 而非 option (PMHQ 模式的 "--"
-        // 是 pmhq 的语法, 会被 pmhq 消费掉, 不会漏到 node).
-        if let Some(uin) = extract_qq_uin(&args) {
+        // 只透传 LLBot 认的参数, 其余丢弃. 带值的统一转成 --xxx=value, 空格写法的值才不会被漏掉.
+        if let Some(uin) = extract_opt_value(&args, &["--qq"]) {
             println!("快速登录 QQ: {}", uin);
             cmd.arg(format!("--qq={}", uin));
+        }
+        if let Some(protocol) = extract_opt_value(&args, &["--protocol", "-p"]) {
+            cmd.arg(format!("--protocol={}", protocol));
+        }
+        if let Some(cdn) = extract_opt_value(&args, &["--cdn"]) {
+            cmd.arg(format!("--cdn={}", cdn));
+        }
+        if debug {
+            cmd.arg("--debug");
         }
         (cmd, "LLBot")
     } else {
@@ -239,6 +260,10 @@ fn main() {
             .arg("llbot.js")
             .arg("--")
             .arg(format!("--pmhq-port={}", port));
+        // --debug 已随上面的用户参数给了 PMHQ; --sub-cmd 之后的参数 PMHQ 原样交给 LLBot, 这里再给 LLBot 一份.
+        if debug {
+            cmd.arg("--debug");
+        }
 
         (cmd, "PMHQ")
     };
@@ -354,4 +379,32 @@ fn main() {
     };
 
     std::process::exit(exit_code);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::extract_opt_value;
+
+    fn get(args: &[&str], names: &[&str]) -> Option<String> {
+        let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        extract_opt_value(&args, names)
+    }
+
+    #[test]
+    fn both_forms_and_alias() {
+        let p = &["--protocol", "-p"];
+        assert_eq!(get(&["--protocol=windows"], p).as_deref(), Some("windows"));
+        assert_eq!(get(&["--protocol", "macos"], p).as_deref(), Some("macos"));
+        assert_eq!(get(&["-p=watch"], p).as_deref(), Some("watch"));
+        assert_eq!(get(&["--debug", "-p", "win"], p).as_deref(), Some("win"));
+        assert_eq!(get(&["--debug"], p), None);
+    }
+
+    #[test]
+    fn exact_name_and_no_option_swallow() {
+        assert_eq!(get(&["--qq-path=/opt/QQ/qq"], &["--qq"]), None);
+        assert_eq!(get(&["--qq-path", "x", "--qq", "123"], &["--qq"]).as_deref(), Some("123"));
+        assert_eq!(get(&["--cdn", "--debug"], &["--cdn"]), None);
+        assert_eq!(get(&["--cdn"], &["--cdn"]), None);
+    }
 }
