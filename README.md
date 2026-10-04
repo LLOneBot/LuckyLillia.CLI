@@ -14,7 +14,7 @@ LLBot 命令行启动器
 ## 目录结构
 
 ```
-llbot(.exe)
+LuckyLillia.exe          # Windows; Linux / macOS 为 llbot
 bin/
   llbot/                 # 必需 (headless / PMHQ 模式都用)
     node(.exe)
@@ -25,6 +25,11 @@ bin/
 ```
 
 > 组件 (PMHQ / Node.js / LLBot) 缺失时会在启动时自动下载；headless 模式不会下载 PMHQ。
+
+> **Windows 首次启动会自我改名**：exe 名中含 `llbot`（如下载到的 `llbot.exe` / `llbot-win-x64.exe`）时，
+> 会改名为 `LuckyLillia.exe` 并以新名字重新启动，使任务管理器与开机自启项显示品牌名。
+> 改名只发生一次（`LuckyLillia.exe` 不含 `llbot`，不会再次触发）；
+> 若无写权限（如装在 `Program Files` 且非管理员）或同名文件被占用，则跳过改名、按原名正常启动。
 
 ## 命令行参数
 

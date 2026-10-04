@@ -159,3 +159,51 @@ pub fn wait_exit(code: i32) -> ! {
     let _ = std::io::stdin().read_line(&mut String::new());
     std::process::exit(code);
 }
+
+/// 归一化后的进程名 (品牌名), 与 Desktop 一致; 任务管理器/自启项显示品牌名而非 llbot.
+#[cfg(target_os = "windows")]
+pub const BRAND_EXE_NAME: &str = "LuckyLillia.exe";
+
+/// Windows 下把进程名统一成 [`BRAND_EXE_NAME`]: 运行中的 exe 允许 rename (不允许 delete),
+/// 同卷改名只改元数据、不中断当前执行; 改完以新名字重启、原进程退出.
+/// 仅在当前名含 "llbot" 时动作 -- 该判断同时是防重启死循环的闸 (品牌名不含 llbot).
+/// 任何一步失败都静默回退、按原名继续启动, 不阻断.
+#[cfg(target_os = "windows")]
+pub fn normalize_process_name(args: &[String]) {
+    let exe_path = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+    let dir = match exe_path.parent() {
+        Some(d) => d,
+        None => return,
+    };
+    let cur_name = match exe_path.file_name().and_then(|n| n.to_str()) {
+        Some(n) => n,
+        None => return,
+    };
+    if !cur_name.to_ascii_lowercase().contains("llbot") {
+        return;
+    }
+
+    let target = dir.join(BRAND_EXE_NAME);
+    // 目标已存在 (上次改名残留): 未被占用才删; 删不掉多半是另一实例在跑, 放弃改名.
+    if target.exists() && std::fs::remove_file(&target).is_err() {
+        return;
+    }
+    // 改名失败 (如装在 Program Files 且非管理员, 无写权限): 不改名, 原名继续.
+    if std::fs::rename(&exe_path, &target).is_err() {
+        return;
+    }
+
+    println!("已重命名为 {}, 正在重新启动...", BRAND_EXE_NAME);
+    // 重启失败: 文件已是品牌名, 下次启动即生效; 本次仍以当前进程跑完, 不阻断.
+    if Command::new(&target)
+        .args(args)
+        .current_dir(dir)
+        .spawn()
+        .is_ok()
+    {
+        std::process::exit(0);
+    }
+}

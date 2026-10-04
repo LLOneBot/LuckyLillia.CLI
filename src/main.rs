@@ -88,6 +88,10 @@ fn main() {
 
     let args: Vec<String> = env::args().skip(1).collect();
 
+    // 分发名 (llbot.exe / llbot-win-x64.exe ...) 统一改成品牌名后以新名字重启; 命中才动, 失败按原名继续.
+    #[cfg(target_os = "windows")]
+    util::normalize_process_name(&args);
+
     // --update 检查并执行更新（不依赖 pmhq 已安装）
     if args.iter().any(|a| a == "--update") {
         updater::run_update(&exe_dir);

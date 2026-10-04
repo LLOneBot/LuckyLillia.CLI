@@ -244,7 +244,8 @@ pub fn get_local_version(exe_dir: &Path, component: &str) -> String {
 pub fn check_running_processes() -> Vec<(String, u32)> {
     let mut running = Vec::new();
     
-    let targets = ["llbot.exe", "pmhq.exe", "QQ.exe"];
+    // CLI 自身可能叫 llbot.exe (旧分发名) 或品牌名, 两个都要认, 否则改名后检测不到在跑的实例.
+    let targets = ["llbot.exe", crate::util::BRAND_EXE_NAME, "pmhq.exe", "QQ.exe"];
     
     let output = Command::new("tasklist")
         .args(["/FO", "CSV", "/NH"])
@@ -534,11 +535,9 @@ pub fn run_update(exe_dir: &Path) {
     #[cfg(target_os = "windows")]
     {
         let mut running = check_running_processes();
-        // 避免误杀正在执行更新的当前进程
+        // 避免误杀正在执行更新的当前进程. 只比 PID: 自身叫什么名字 (改名前/后) 都成立.
         let current_pid = std::process::id();
-        running.retain(|(name, pid)| {
-            !(name.eq_ignore_ascii_case("llbot.exe") && *pid == current_pid)
-        });
+        running.retain(|(_, pid)| *pid != current_pid);
 
         if !running.is_empty() {
             println!();
