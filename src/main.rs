@@ -19,6 +19,9 @@ use std::time::Duration;
 const DEFAULT_PORT: u16 = 13000;
 const PORT_RANGE_END: u16 = 14000;
 
+// CLI 自身消费的模式切换 flag, 不透传给子进程.
+const MODE_FLAGS: [&str; 3] = ["--headless", "--pmhq", "--no-headless"];
+
 // 取选项值, 支持 <name>=<v> 和 <name> <v> 两种写法, names 可带别名 (如 ["--protocol", "-p"]).
 // 名字精确匹配, --qq 不会误吃 --qq-path; 空格写法的下一个参数以 "-" 开头时视为缺值, 不吞别的选项.
 fn extract_opt_value(args: &[String], names: &[&str]) -> Option<String> {
@@ -51,11 +54,12 @@ fn print_help() {
     println!("  llbot [选项]");
     println!();
     println!("模式:");
-    println!("  默认 headless   不启动 PMHQ, 直接拉起 LLBot 直连 QQ 协议, 二维码由 LLBot 打印到终端");
-    println!("  --pmhq          PMHQ 模式: 启动 PMHQ attach QQ, LLBot 经 PMHQ 通信");
+    println!("  默认 PMHQ       启动 PMHQ attach QQ, LLBot 经 PMHQ 通信");
+    println!("  --headless      不启动 PMHQ, 直接拉起 LLBot 直连 QQ 协议, 二维码由 LLBot 打印到终端");
     println!();
     println!("选项:");
-    println!("  --pmhq, --no-headless   切换为 PMHQ 模式 (默认 headless 直连)");
+    println!("  --headless              切换为 headless 直连模式 (默认 PMHQ)");
+    println!("  --pmhq, --no-headless   显式指定 PMHQ 模式 (默认, 兼容旧用法)");
     println!("  --qq=<number>           快速登录 QQ 号 (两种模式均生效)");
     println!("  --debug                 调试模式 (两种模式均生效)");
     println!("  --cdn=<cf|china>        接入点 CDN, 默认 cf (两种模式均生效)");
@@ -74,9 +78,9 @@ fn print_help() {
     println!("  --qq-exit-delay=<秒>    QQ 退出后缓冲时间 (默认 15 秒)");
     println!();
     println!("示例:");
-    println!("  llbot                   headless 直连 (默认)");
+    println!("  llbot                   PMHQ 模式 (默认)");
     println!("  llbot --qq=123456789    快速登录");
-    println!("  llbot --pmhq            PMHQ 模式");
+    println!("  llbot --headless        headless 直连");
     println!("  llbot --update          检查更新");
 }
 
@@ -108,9 +112,11 @@ fn main() {
         std::process::exit(0);
     }
 
-    // 模式: 默认 headless (LLBot 直连 QQ 协议, 不启动 pmhq);
-    //       --pmhq / --no-headless 切回 PMHQ 模式 (pmhq attach QQ, llbot 走 --pmhq-port).
-    let headless = !args.iter().any(|a| a == "--pmhq" || a == "--no-headless");
+    // 模式: 默认 PMHQ (pmhq attach QQ, llbot 走 --pmhq-port);
+    //       --headless 切到直连模式 (LLBot 直连 QQ 协议, 不启动 pmhq).
+    // --pmhq / --no-headless 仍受理, 显式指定默认模式; 与 --headless 同时给出时以它们为准.
+    let headless = args.iter().any(|a| a == "--headless")
+        && !args.iter().any(|a| a == "--pmhq" || a == "--no-headless");
 
     // 启动时自动补齐必要组件（缺失才下载; headless 不下 pmhq）
     if let Err(e) = updater::ensure_required_components(&exe_dir, headless) {
@@ -246,10 +252,7 @@ fn main() {
         }
 
         // 透传用户参数 (去掉 CLI 自身的模式控制 flag)
-        for a in args
-            .iter()
-            .filter(|a| a.as_str() != "--pmhq" && a.as_str() != "--no-headless")
-        {
+        for a in args.iter().filter(|a| !MODE_FLAGS.contains(&a.as_str())) {
             cmd.arg(a);
         }
 
