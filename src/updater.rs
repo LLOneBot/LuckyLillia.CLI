@@ -260,7 +260,14 @@ pub fn check_running_processes() -> Vec<(String, u32)> {
                 let pid_str = parts[1].trim_matches('"');
                 
                 for target in &targets {
-                    if name.eq_ignore_ascii_case(target) {
+                    // 品牌名按前缀认: 归一化失败 (无写权限等) 时进程名可能还是
+                    // LuckyLillia-win-x64.exe 这类分发名, 精确匹配会漏掉.
+                    let hit = if *target == crate::util::BRAND_EXE_NAME {
+                        name.to_ascii_lowercase().starts_with("luckylillia")
+                    } else {
+                        name.eq_ignore_ascii_case(target)
+                    };
+                    if hit {
                         if let Ok(pid) = pid_str.parse::<u32>() {
                             running.push((name.to_string(), pid));
                         }
@@ -799,15 +806,16 @@ fn self_update(tarball_url: &str, exe_dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// npm 包内的文件名仍是 llbot(.exe) -- 已发布的旧版 CLI 自更新只认这个名字, 不能改.
+/// 品牌名前缀也一并认, 以防日后打包方式变化.
 fn find_exe_in_dir(dir: &Path) -> Option<std::path::PathBuf> {
-    let exe_name = if cfg!(target_os = "windows") { "llbot.exe" } else { "llbot" };
-
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_file() {
                 if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    if name == exe_name || name.starts_with("llbot") {
+                    let lower = name.to_ascii_lowercase();
+                    if lower.starts_with("llbot") || lower.starts_with("luckylillia") {
                         return Some(path);
                     }
                 }

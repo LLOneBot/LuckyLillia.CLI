@@ -18,19 +18,19 @@ jobs:
         include:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact: llbot.exe
+            artifact: LuckyLillia.exe
             npm_pkg: llbot-cli-win-x64
           - os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            artifact: llbot
+            artifact: LuckyLillia
             npm_pkg: llbot-cli-linux-x64
           - os: ubuntu-22.04
             target: aarch64-unknown-linux-gnu
-            artifact: llbot
+            artifact: LuckyLillia
             npm_pkg: llbot-cli-linux-arm64
           - os: macos-14
             target: aarch64-apple-darwin
-            artifact: llbot
+            artifact: LuckyLillia
             npm_pkg: llbot-cli-darwin-arm64
     
     runs-on: ${{ matrix.os }}
@@ -84,11 +84,11 @@ jobs:
       - name: Prepare release files
         run: |
           mkdir -p release
-          cp artifacts/llbot-cli-win-x64/llbot.exe release/llbot-win-x64.exe
-          cp artifacts/llbot-cli-linux-x64/llbot release/llbot-linux-x64
-          cp artifacts/llbot-cli-linux-arm64/llbot release/llbot-linux-arm64
-          cp artifacts/llbot-cli-darwin-arm64/llbot release/llbot-macos-arm64
-          chmod +x release/llbot-linux-x64 release/llbot-linux-arm64 release/llbot-macos-arm64
+          cp artifacts/llbot-cli-win-x64/LuckyLillia.exe release/LuckyLillia-win-x64.exe
+          cp artifacts/llbot-cli-linux-x64/LuckyLillia release/LuckyLillia-linux-x64
+          cp artifacts/llbot-cli-linux-arm64/LuckyLillia release/LuckyLillia-linux-arm64
+          cp artifacts/llbot-cli-darwin-arm64/LuckyLillia release/LuckyLillia-macos-arm64
+          chmod +x release/LuckyLillia-linux-x64 release/LuckyLillia-linux-arm64 release/LuckyLillia-macos-arm64
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -118,12 +118,13 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
+          # npm 包内仍叫 llbot(.exe): 已发布旧版 CLI 的 --update 只认这个名字, 改了会断自更新链
           
           REPO='{"type":"git","url":"https://github.com/LLOneBot/LuckyLillia.CLI"}'
           
           # win-x64
           mkdir -p package
-          cp artifacts/llbot-cli-win-x64/llbot.exe package/
+          cp artifacts/llbot-cli-win-x64/LuckyLillia.exe package/llbot.exe
           echo '{"name":"llbot-cli-win-x64","version":"'$VERSION'","description":"LLBot CLI for Windows x64","repository":'"$REPO"'}' > package/package.json
           tar -czf llbot-cli-win-x64.tgz package
           npm publish llbot-cli-win-x64.tgz --provenance --access public
@@ -131,7 +132,7 @@ jobs:
           
           # linux-x64
           mkdir -p package
-          cp artifacts/llbot-cli-linux-x64/llbot package/
+          cp artifacts/llbot-cli-linux-x64/LuckyLillia package/llbot
           echo '{"name":"llbot-cli-linux-x64","version":"'$VERSION'","description":"LLBot CLI for Linux x64","repository":'"$REPO"'}' > package/package.json
           tar -czf llbot-cli-linux-x64.tgz package
           npm publish llbot-cli-linux-x64.tgz --provenance --access public
@@ -139,7 +140,7 @@ jobs:
           
           # linux-arm64
           mkdir -p package
-          cp artifacts/llbot-cli-linux-arm64/llbot package/
+          cp artifacts/llbot-cli-linux-arm64/LuckyLillia package/llbot
           echo '{"name":"llbot-cli-linux-arm64","version":"'$VERSION'","description":"LLBot CLI for Linux arm64","repository":'"$REPO"'}' > package/package.json
           tar -czf llbot-cli-linux-arm64.tgz package
           npm publish llbot-cli-linux-arm64.tgz --provenance --access public
@@ -147,7 +148,7 @@ jobs:
           
           # darwin-arm64
           mkdir -p package
-          cp artifacts/llbot-cli-darwin-arm64/llbot package/
+          cp artifacts/llbot-cli-darwin-arm64/LuckyLillia package/llbot
           echo '{"name":"llbot-cli-macos-arm64","version":"'$VERSION'","description":"LLBot CLI for macOS arm64","repository":'"$REPO"'}' > package/package.json
           tar -czf llbot-cli-darwin-arm64.tgz package
           npm publish llbot-cli-darwin-arm64.tgz --provenance --access public

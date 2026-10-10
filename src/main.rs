@@ -51,7 +51,7 @@ fn print_help() {
     println!("LLBot 命令行启动器");
     println!();
     println!("用法:");
-    println!("  llbot [选项]");
+    println!("  LuckyLillia [选项]");
     println!();
     println!("模式:");
     println!("  默认 PMHQ       启动 PMHQ attach QQ, LLBot 经 PMHQ 通信");
@@ -78,10 +78,10 @@ fn print_help() {
     println!("  --qq-exit-delay=<秒>    QQ 退出后缓冲时间 (默认 15 秒)");
     println!();
     println!("示例:");
-    println!("  llbot                   PMHQ 模式 (默认)");
-    println!("  llbot --qq=123456789    快速登录");
-    println!("  llbot --headless        headless 直连");
-    println!("  llbot --update          检查更新");
+    println!("  LuckyLillia                 PMHQ 模式 (默认)");
+    println!("  LuckyLillia --qq=123456789  快速登录");
+    println!("  LuckyLillia --headless      headless 直连");
+    println!("  LuckyLillia --update        检查更新");
 }
 
 fn main() {

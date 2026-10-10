@@ -6,7 +6,7 @@
       "type": "lldb",
       "request": "launch",
       "preLaunchTask": "cargo build",
-      "program": "${workspaceFolder}\\target\\debug\\llbot.exe",
+      "program": "${workspaceFolder}\\target\\debug\\LuckyLillia.exe",
       "args": [],
       "cwd": "${workspaceFolder}"
     }

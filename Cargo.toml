@@ -5,7 +5,7 @@ edition = "2021"
 description = "LLBot CLI launcher"
 
 [[bin]]
-name = "llbot"
+name = "LuckyLillia"
 path = "src/main.rs"
 
 [dependencies]

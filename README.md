@@ -14,7 +14,7 @@ LLBot 命令行启动器
 ## 目录结构
 
 ```
-LuckyLillia.exe          # Windows; Linux / macOS 为 llbot
+LuckyLillia.exe          # Windows; Linux / macOS 为 LuckyLillia
 bin/
   llbot/                 # 必需 (headless / PMHQ 模式都用)
     node(.exe)
@@ -26,10 +26,17 @@ bin/
 
 > 组件 (PMHQ / Node.js / LLBot) 缺失时会在启动时自动下载；headless 模式不会下载 PMHQ。
 
-> **Windows 首次启动会自我改名**：exe 名中含 `llbot`（如下载到的 `llbot.exe` / `llbot-win-x64.exe`）时，
-> 会改名为 `LuckyLillia.exe` 并以新名字重新启动，使任务管理器与开机自启项显示品牌名。
-> 改名只发生一次（`LuckyLillia.exe` 不含 `llbot`，不会再次触发）；
-> 若无写权限（如装在 `Program Files` 且非管理员）或同名文件被占用，则跳过改名、按原名正常启动。
+> **Windows 首次启动会自我改名**：exe 名是分发名（含 `llbot` 或 `LuckyLillia` 但不等于 `LuckyLillia.exe`，
+> 例如 release 下载到的 `LuckyLillia-win-x64.exe`、旧版的 `llbot-win-x64.exe`）时，会改名为
+> `LuckyLillia.exe` 并以新名字重新启动，使任务管理器与开机自启项显示品牌名。
+> 改名只发生一次（名字已是 `LuckyLillia.exe` 时直接跳过，该判断同时是防重启死循环的闸）；
+> 用户自己改成的其它名字不会被动；若无写权限（如装在 `Program Files` 且非管理员）或同名文件
+> 被占用，则跳过改名、按原名正常启动。
+
+> **构建 / 分发产物名**：`cargo build` 产出 `LuckyLillia(.exe)`，GitHub Release 的下载文件为
+> `LuckyLillia-win-x64.exe` / `LuckyLillia-linux-x64` / `LuckyLillia-linux-arm64` / `LuckyLillia-macos-arm64`。
+> npm 包（`llbot-cli-<os>-<arch>`）内的文件名仍是 `llbot(.exe)`：已发布旧版本的 `--update` 只认这个名字
+> （见 `src/updater.rs` 的 `find_exe_in_dir`），改掉会断掉它们的自更新链。
 
 ## 命令行参数
 
@@ -67,19 +74,19 @@ bin/
 
 ```bash
 # 直接启动（PMHQ 模式，默认：启动 PMHQ + attach QQ）
-./llbot
+./LuckyLillia
 
 # 快速登录
-./llbot --qq=123456789
+./LuckyLillia --qq=123456789
 
 # 指定 QQ 路径
-./llbot --qq-path="/opt/QQ/qq"
+./LuckyLillia --qq-path="/opt/QQ/qq"
 
 # headless 直连（不启动 PMHQ，LLBot 直连 QQ 协议）
-./llbot --headless
+./LuckyLillia --headless
 
 # 检查更新
-./llbot --update
+./LuckyLillia --update
 ```
 
 ## 支持平台

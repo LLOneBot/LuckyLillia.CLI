@@ -16,7 +16,8 @@ set PKG_DIR=target\release\package
 echo Preparing npm package...
 rmdir /s /q %PKG_DIR% 2>nul
 mkdir %PKG_DIR%
-copy target\release\llbot.exe %PKG_DIR%\
+rem npm package keeps the llbot.exe name: older released CLIs look for it on --update
+copy target\release\LuckyLillia.exe %PKG_DIR%\llbot.exe
 echo {"name": "llbot-cli-win-x64", "version": "%VERSION%", "description": "LLBot CLI launcher for Windows x64"} > %PKG_DIR%\package.json
 
 cd target\release

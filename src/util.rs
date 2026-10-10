@@ -166,7 +166,8 @@ pub const BRAND_EXE_NAME: &str = "LuckyLillia.exe";
 
 /// Windows 下把进程名统一成 [`BRAND_EXE_NAME`]: 运行中的 exe 允许 rename (不允许 delete),
 /// 同卷改名只改元数据、不中断当前执行; 改完以新名字重启、原进程退出.
-/// 仅在当前名含 "llbot" 时动作 -- 该判断同时是防重启死循环的闸 (品牌名不含 llbot).
+/// 仅认我们自己的分发名 (旧 llbot*.exe / release 的 LuckyLillia-win-x64.exe 之类),
+/// 用户自行改成别的名字不动. 已是品牌名时直接返回 -- 该判断同时是防重启死循环的闸.
 /// 任何一步失败都静默回退、按原名继续启动, 不阻断.
 #[cfg(target_os = "windows")]
 pub fn normalize_process_name(args: &[String]) {
@@ -182,7 +183,11 @@ pub fn normalize_process_name(args: &[String]) {
         Some(n) => n,
         None => return,
     };
-    if !cur_name.to_ascii_lowercase().contains("llbot") {
+    if cur_name.eq_ignore_ascii_case(BRAND_EXE_NAME) {
+        return;
+    }
+    let lower = cur_name.to_ascii_lowercase();
+    if !(lower.contains("llbot") || lower.contains("luckylillia")) {
         return;
     }
 
