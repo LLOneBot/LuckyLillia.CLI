@@ -5,7 +5,7 @@ LLBot 命令行启动器
 ## 功能
 
 - 两种启动模式，默认 **PMHQ**：
-  - **PMHQ 模式（默认）**：启动 PMHQ attach QQ，LLBot 经 PMHQ 通信
+  - **PMHQ 模式（默认）**：CLI 同时拉起 PMHQ（attach QQ）和 LLBot 两个子进程，LLBot 经 `--pmhq-port` 连 PMHQ 通信
   - **headless 模式**（加 `--headless`）：不启动 PMHQ，直接拉起 LLBot，由 LLBot 直连 QQ 协议
 - headless 模式下登录二维码由 LLBot 自身打印到终端
 - 登录成功后通过命名管道 (IPC) 从 LLBot 获取 QQ 号 / 昵称，并设置窗口标题（仅 Windows）
@@ -40,7 +40,7 @@ bin/
 
 ## 命令行参数
 
-所有参数都是可选的。CLI 自身识别 `--headless` / `--pmhq` / `--no-headless` 切换模式（这几个 flag 不透传给子进程）；其余参数：headless 模式下只把 `--qq` / `--protocol` / `--cdn` / `--debug` 透传给 LLBot（其它参数忽略，带值的统一转成 `--xxx=value` 形式），PMHQ 模式下全部透传给 PMHQ（`--debug` 会同时传给 LLBot）。
+所有参数都是可选的。CLI 自身识别 `--headless` / `--pmhq` / `--no-headless` 切换模式（这几个 flag 不透传给子进程）；其余参数：headless 模式下只把 `--qq` / `--protocol` / `--cdn` / `--debug` 透传给 LLBot（其它参数忽略，带值的统一转成 `--xxx=value` 形式），PMHQ 模式下全部透传给 PMHQ，其中 `--debug` / `--cdn` 会同时传给 LLBot。
 
 | 参数 | 说明 |
 |------|------|
@@ -94,5 +94,7 @@ bin/
 - Windows x64
 - Linux x64
 - Linux arm64
+
+> 进程模型见 [docs/process-model.md](docs/process-model.md)。
 
 > 登录信息 (uin / 昵称) 的命名管道 IPC 仅 Windows 生效，用于登录后回填并设置窗口标题；其它平台依赖 LLBot 自身的终端输出（二维码、登录状态）。

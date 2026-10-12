@@ -6,7 +6,7 @@
 //!
 //! state 取值: initializing / need_qrcode / waiting_confirm / logged_in / expired / cancelled.
 //! 二维码不在这里处理 -- LLBot 自身会打印到终端 (CLI 已转发其 stdout), 这里只等 logged_in 拿 uin/昵称.
-//! 管道名由 CLI 生成并经 env LL_IPC_PIPE 透传给 LLBot (pmhq 的孙进程).
+//! 管道名由 CLI 生成, 经 env LL_IPC_PIPE 交给 LLBot (两种模式下 LLBot 都是 CLI 的直接子进程).
 
 use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
@@ -39,7 +39,7 @@ pub fn start_login_listener(pipe_name: String) {
 
 fn run(pipe_name: &str) {
     let path = format!(r"\\.\pipe\{}", pipe_name);
-    // LLBot 由 pmhq 作为孙进程拉起, 需要等它 listen; 连接失败 (管道未就绪 / 断开) 就退避重试.
+    // LLBot 刚 spawn 时还没来得及 listen; 连接失败 (管道未就绪 / 断开) 就退避重试.
     loop {
         if let Ok(pipe) = OpenOptions::new().read(true).write(true).open(&path) {
             if poll_connection(pipe) {

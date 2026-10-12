@@ -10,7 +10,7 @@ mod windows_job;
 
 use command_group::{CommandGroup, GroupChild};
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -180,28 +180,27 @@ fn main() {
     }
 
     // Windows: 生成命名管道名. LLBot 据此 listen, CLI 作为 client 轮询 get_login_state 拿 uin/nickname
-    // (PMHQ 已不再提供 getSelfInfo). headless 直接设在 node 进程上; PMHQ 模式经 pmhq 透传给孙进程.
+    // (PMHQ 已不再提供 getSelfInfo). 两种模式下 LLBot 都是 CLI 的直接子进程, env 直接设在 node 上.
     #[cfg(target_os = "windows")]
     let ipc_pipe_name = llbot_ipc::generate_pipe_name();
+    #[cfg(not(target_os = "windows"))]
+    let ipc_pipe_name = String::new();
 
     println!("LLBot CLI 启动器");
     println!("================");
 
     let debug = args.iter().any(|a| a == "--debug");
 
-    // 按模式构建启动命令. proc_label 用于日志/退出提示.
-    let (mut cmd, proc_label): (Command, &str) = if headless {
+    // 按模式构建待启动进程: headless 只有 LLBot; PMHQ 模式下 CLI 自己拉起 pmhq 和 LLBot 两个子进程.
+    // 不需要等 pmhq 就绪再启动 LLBot -- LLBot 连不上 pmhq 会按 1s 间隔无限重连 (llbot.js
+    // connectWebSocket 里 onerror/onclose 都走 reconnect), 顺序 spawn 即可.
+    let mut specs: Vec<(Command, &'static str)> = Vec::new();
+
+    if headless {
         println!("模式: headless (LLBot 直连)");
         println!();
 
-        let mut cmd = Command::new(&node_path);
-        cmd.current_dir(&llbot_dir);
-        cmd.env("NODE_SKIP_PLATFORM_CHECK", "1");
-        #[cfg(target_os = "windows")]
-        cmd.env("LL_IPC_PIPE", &ipc_pipe_name);
-        cmd.arg("--disable-warning=ExperimentalWarning")
-            .arg("--enable-source-maps")
-            .arg("llbot.js");
+        let mut cmd = llbot_command(&node_path, &llbot_dir, &ipc_pipe_name);
         // 只透传 LLBot 认的参数, 其余丢弃. 带值的统一转成 --xxx=value, 空格写法的值才不会被漏掉.
         if let Some(uin) = extract_opt_value(&args, &["--qq"]) {
             println!("快速登录 QQ: {}", uin);
@@ -216,7 +215,7 @@ fn main() {
         if debug {
             cmd.arg("--debug");
         }
-        (cmd, "LLBot")
+        specs.push((cmd, "LLBot"));
     } else {
         let pmhq_exe = match util::find_pmhq_exe(&exe_dir) {
             Some(path) => path,
@@ -238,70 +237,44 @@ fn main() {
         println!("端口: {}", port);
         println!();
 
-        let mut cmd = Command::new(&pmhq_exe);
-        cmd.env("NODE_SKIP_PLATFORM_CHECK", "1");
-        cmd.arg("--port").arg(port.to_string());
-        cmd.arg(format!("--auth-token={}", auth_token));
-
-        #[cfg(target_os = "windows")]
-        cmd.env("LL_IPC_PIPE", &ipc_pipe_name);
+        let mut pmhq_cmd = Command::new(&pmhq_exe);
+        pmhq_cmd.env("NODE_SKIP_PLATFORM_CHECK", "1");
+        pmhq_cmd.arg("--port").arg(port.to_string());
+        pmhq_cmd.arg(format!("--auth-token={}", auth_token));
 
         if let Some(ref qq_path) = detected_qq_path {
             println!("检测到 QQ 路径: {}", qq_path);
-            cmd.arg(format!("--qq-path={}", qq_path));
+            pmhq_cmd.arg(format!("--qq-path={}", qq_path));
         }
 
         // 透传用户参数 (去掉 CLI 自身的模式控制 flag)
         for a in args.iter().filter(|a| !MODE_FLAGS.contains(&a.as_str())) {
-            cmd.arg(a);
+            pmhq_cmd.arg(a);
         }
 
-        cmd.arg("--exit-with-qq-delay")
-            .arg("15")
-            .arg("--sub-cmd-workdir")
-            .arg(&llbot_dir)
-            .arg("--sub-cmd")
-            .arg(&node_path)
-            .arg("--disable-warning=ExperimentalWarning")
-            .arg("--enable-source-maps")
-            .arg("llbot.js")
-            .arg("--")
-            .arg(format!("--pmhq-port={}", port));
-        // --debug 已随上面的用户参数给了 PMHQ; --sub-cmd 之后的参数 PMHQ 原样交给 LLBot, 这里再给 LLBot 一份.
+        pmhq_cmd.arg("--exit-with-qq-delay").arg("15");
+
+        // --pmhq-port 是 LLBot 走 PMHQ 模式而非直连的开关 (llbot.js getPmhqTarget).
+        // --qq 不给 LLBot: PMHQ 模式的快速登录归 pmhq 管, 已随用户参数透传过去.
+        let mut llbot_cmd = llbot_command(&node_path, &llbot_dir, &ipc_pipe_name);
+        llbot_cmd.arg(format!("--pmhq-port={}", port));
+        if let Some(cdn) = extract_opt_value(&args, &["--cdn"]) {
+            llbot_cmd.arg(format!("--cdn={}", cdn));
+        }
         if debug {
-            cmd.arg("--debug");
+            llbot_cmd.arg("--debug");
         }
 
-        (cmd, "PMHQ")
-    };
-
-    let mut child: GroupChild = match cmd
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .group_spawn()
-    {
-        Ok(child) => child,
-        Err(e) => {
-            eprintln!("启动 {} 失败: {}", proc_label, e);
-            util::wait_exit(1);
-        }
-    };
-
-    #[cfg(target_os = "windows")]
-    if let Err(e) = windows_job::assign_to_job_object(&mut child) {
-        eprintln!("警告: 无法设置进程保护: {}", e);
+        specs.push((pmhq_cmd, "PMHQ"));
+        specs.push((llbot_cmd, "LLBot"));
     }
 
-    let child_arc: Arc<Mutex<Option<GroupChild>>> = Arc::new(Mutex::new(None));
-    let child_for_handler = child_arc.clone();
+    let procs: Procs = Arc::new(Mutex::new(Vec::new()));
 
+    // 信号处理先注册再 spawn: 启动过程中 Ctrl+C 也能清掉已经起来的那个.
+    let procs_for_handler = procs.clone();
     ctrlc::set_handler(move || {
-        if let Ok(mut guard) = child_for_handler.lock() {
-            if let Some(ref mut c) = *guard {
-                let _ = c.kill();
-            }
-        }
+        kill_all(&procs_for_handler);
         std::process::exit(0);
     })
     .ok();
@@ -312,80 +285,148 @@ fn main() {
         use signal_hook::consts::{SIGHUP, SIGTERM};
         use signal_hook::iterator::Signals;
 
-        let child_for_signal = child_arc.clone();
+        let procs_for_signal = procs.clone();
         let mut signals = Signals::new(&[SIGHUP, SIGTERM]).expect("无法注册信号处理");
         thread::spawn(move || {
             for _sig in signals.forever() {
-                if let Ok(mut guard) = child_for_signal.lock() {
-                    if let Some(ref mut c) = *guard {
-                        let _ = c.kill();
-                    }
-                }
+                kill_all(&procs_for_signal);
                 std::process::exit(0);
             }
         });
     }
 
-    let stdout = child.inner().stdout.take();
-    let stderr = child.inner().stderr.take();
-
-    // 把 child 移入 Arc，供 ctrlc handler 使用
-    *child_arc.lock().unwrap() = Some(child);
-    let child_for_wait = child_arc.clone();
-
-    if let Some(stdout) = stdout {
-        thread::spawn(move || {
-            use std::io::{BufRead, BufReader};
-            let reader = BufReader::new(stdout);
-            for line in reader.lines() {
-                if let Ok(line) = line {
-                    println!("{}", line);
-                }
+    for (mut cmd, label) in specs {
+        let mut child: GroupChild = match cmd
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .group_spawn()
+        {
+            Ok(child) => child,
+            Err(e) => {
+                eprintln!("启动 {} 失败: {}", label, e);
+                kill_all(&procs);
+                util::wait_exit(1);
             }
-        });
-    }
+        };
 
-    if let Some(stderr) = stderr {
-        thread::spawn(move || {
-            use std::io::{BufRead, BufReader};
-            let reader = BufReader::new(stderr);
-            for line in reader.lines() {
-                if let Ok(line) = line {
-                    eprintln!("{}", line);
-                }
+        #[cfg(target_os = "windows")]
+        if let Err(e) = windows_job::assign_to_job_object(&mut child) {
+            eprintln!("警告: 无法设置 {} 进程保护: {}", label, e);
+        }
+
+        forward_lines(child.inner().stdout.take(), false);
+        forward_lines(child.inner().stderr.take(), true);
+
+        match procs.lock() {
+            Ok(mut guard) => guard.push((label, child)),
+            Err(_) => {
+                let _ = child.kill();
+                eprintln!("内部错误: 进程表不可用");
+                util::wait_exit(1);
             }
-        });
+        }
     }
 
     // 登录信息 (uin/昵称) 经 LLBot 命名管道获取并设置窗口标题; 二维码由 LLBot 自身打印到终端.
     #[cfg(target_os = "windows")]
     llbot_ipc::start_login_listener(ipc_pipe_name);
 
-    // 等待子进程结束
+    // 等待子进程结束. 任一个退出就清掉其余的并跟着退 -- PMHQ 模式下两个进程是一套,
+    // 少了任何一个都没法继续干活 (pmhq 没了 LLBot 连不上, LLBot 没了没人收消息).
     let exit_code = loop {
         thread::sleep(Duration::from_millis(100));
-        if let Ok(mut guard) = child_for_wait.lock() {
-            if let Some(ref mut c) = *guard {
-                match c.try_wait() {
-                    Ok(Some(status)) => {
-                        if !status.success() {
-                            eprintln!("{} 退出，状态码: {:?}", proc_label, status.code());
-                        }
-                        break status.code().unwrap_or(1);
+
+        let mut guard = match procs.lock() {
+            Ok(guard) => guard,
+            Err(_) => break 1,
+        };
+        if guard.is_empty() {
+            break 1;
+        }
+
+        let mut exited: Option<(usize, i32)> = None;
+        for (i, (label, c)) in guard.iter_mut().enumerate() {
+            match c.try_wait() {
+                Ok(Some(status)) => {
+                    if !status.success() {
+                        eprintln!("{} 退出，状态码: {:?}", label, status.code());
                     }
-                    Ok(None) => {}
-                    Err(e) => {
-                        eprintln!("等待 {} 失败: {}", proc_label, e);
-                        break 1;
-                    }
+                    exited = Some((i, status.code().unwrap_or(1)));
+                    break;
                 }
-            } else {
-                break 1;
+                Ok(None) => {}
+                Err(e) => {
+                    eprintln!("等待 {} 失败: {}", label, e);
+                    exited = Some((i, 1));
+                    break;
+                }
             }
+        }
+
+        if let Some((exited_idx, code)) = exited {
+            for (i, (label, c)) in guard.iter_mut().enumerate() {
+                if i != exited_idx {
+                    println!("正在关闭 {}...", label);
+                    let _ = c.kill();
+                }
+            }
+            break code;
         }
     };
 
     std::process::exit(exit_code);
+}
+
+/// 已启动的子进程 (label, child): PMHQ 模式下是 pmhq + LLBot, headless 只有 LLBot.
+/// 信号 handler 和主等待循环共享它, 所以进 Arc<Mutex<_>>.
+type Procs = Arc<Mutex<Vec<(&'static str, GroupChild)>>>;
+
+fn kill_all(procs: &Procs) {
+    if let Ok(mut guard) = procs.lock() {
+        for (_, c) in guard.iter_mut() {
+            let _ = c.kill();
+        }
+    }
+}
+
+/// node llbot.js 的公共部分 (cwd / env / node 自身参数); 两种模式只在后面追加的 LLBot 参数上不同.
+fn llbot_command(node_path: &Path, llbot_dir: &Path, ipc_pipe_name: &str) -> Command {
+    let mut cmd = Command::new(node_path);
+    // llbot.js 是相对路径, 靠这个 cwd 解析 (原先 PMHQ 模式下由 pmhq 的 --sub-cmd-workdir 负责).
+    cmd.current_dir(llbot_dir);
+    cmd.env("NODE_SKIP_PLATFORM_CHECK", "1");
+    #[cfg(target_os = "windows")]
+    cmd.env("LL_IPC_PIPE", ipc_pipe_name);
+    #[cfg(not(target_os = "windows"))]
+    let _ = ipc_pipe_name;
+    cmd.arg("--disable-warning=ExperimentalWarning")
+        .arg("--enable-source-maps")
+        .arg("llbot.js");
+    cmd
+}
+
+/// 转发子进程的一路输出到 CLI 自己的 stdout/stderr. 不加进程名前缀 --
+/// LLBot 的登录二维码是 ASCII art, 行首插前缀会撑坏排版.
+fn forward_lines<R: std::io::Read + Send + 'static>(src: Option<R>, to_stderr: bool) {
+    let src = match src {
+        Some(src) => src,
+        None => return,
+    };
+    thread::spawn(move || {
+        use std::io::{BufRead, BufReader};
+        let reader = BufReader::new(src);
+        for line in reader.lines() {
+            // 跳过非 UTF-8 的行继续转发 (Windows 下子进程可能吐 GBK 字节).
+            // 不能换成 map_while(Result::ok) -- 那会在第一个坏行上停掉整条管道, 之后的日志全丢.
+            let Ok(line) = line else { continue };
+            if to_stderr {
+                eprintln!("{}", line);
+            } else {
+                println!("{}", line);
+            }
+        }
+    });
 }
 
 #[cfg(test)]
