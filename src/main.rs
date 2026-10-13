@@ -46,7 +46,7 @@ fn extract_opt_value(args: &[String], names: &[&str]) -> Option<String> {
 }
 
 fn print_help() {
-    println!("llbot-cli {}", env!("CARGO_PKG_VERSION"));
+    println!("LuckyLillia {}", env!("CARGO_PKG_VERSION"));
     println!();
     println!("LLBot 命令行启动器");
     println!();
@@ -108,7 +108,7 @@ fn main() {
         std::process::exit(0);
     }
     if args.iter().any(|a| a == "--version" || a == "-v") {
-        println!("llbot-cli {}", env!("CARGO_PKG_VERSION"));
+        println!("LuckyLillia {}", env!("CARGO_PKG_VERSION"));
         std::process::exit(0);
     }
 
